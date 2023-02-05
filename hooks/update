@@ -1,0 +1,34 @@
+ref_name=$1
+new_rev=$3
+
+# only check branches, not tags or bare commits
+if [ -z $(echo $ref_name | grep "refs/heads/") ]; then
+  exit 0
+fi
+
+# don't check empty branches
+if [ "$(expr "${new_rev}" : '0*$')" -ne 0 ]; then
+  exit 0
+fi
+
+# Checkout a copy of the branch (but also changes HEAD)
+my_work_tree=$(mktemp -d -t git-work-tree.XXXXXXXX) 2>/dev/null
+git --work-tree="${my_work_tree}" --git-dir="." checkout $new_rev -f >/dev/null
+
+# Do the formatter check
+echo "Checking code formatting..."
+pushd ${my_work_tree} >/dev/null
+prettier './**/*.{js,css,html,json,md}' --list-different
+my_status=$?
+popd >/dev/null
+
+# reset HEAD to master, and cleanup
+git --work-tree="${my_work_tree}" --git-dir="." checkout master -f >/dev/null
+rm -rf "${my_work_tree}"
+
+# handle error, if any
+if [ "0" != "$my_status" ]; then
+  echo "Please format the files listed above and re-commit."
+  echo "(and don't forget your .prettierrc, if you have one)"
+  exit 1
+fi
